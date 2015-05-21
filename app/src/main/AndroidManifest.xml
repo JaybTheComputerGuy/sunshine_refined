@@ -27,13 +27,17 @@
                 android:value="com.example.jayb.sunshine3.MainActivity" />
         </activity>
         <activity
-            android:name="com.example.jayb.sunshine3.app.SettingsActivity"
+            android:name="com.example.jayb.sunshine3.SettingsActivity"
             android:label="@string/title_activity_settings"
             android:parentActivityName=".MainActivity" >
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value="com.example.jayb.sunshine3.MainActivity" />
         </activity>
+        cd
+        <provider
+            android:authorities="com.example.jayb.sunshine3"
+            android:name=".data.WeatherProvider" />
     </application>
 
 </manifest>
