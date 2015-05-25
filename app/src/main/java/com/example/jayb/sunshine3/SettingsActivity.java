@@ -29,6 +29,14 @@ public class SettingsActivity extends PreferenceActivity implements Preference.O
     public boolean onPreferenceChange(Preference preference, Object value) {
         String stringValue = value.toString();
 
+        if(!mBindingPreference){
+            if(preference.getKey().equals(getString(R.string.pref_location_key))){
+                FetchWeatherTask weatherTask = new FetchWeatherTask(this);
+                String location = value.toString();
+                weatherTask.execute(location);
+            }
+        }
+
         if(preference instanceof ListPreference){
             ListPreference listPreference = (ListPreference) preference;
             int prefIndex = listPreference.findIndexOfValue(stringValue);
