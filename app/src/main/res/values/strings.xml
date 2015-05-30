@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:xliff="http://schemas.android.com/apk/res/android">
     <string name="app_name">Sunshine3</string>
     <string name="hello_world">Hello world!</string>
 
@@ -27,4 +27,15 @@
         <item>Metric</item>
         <item>Imperial</item>
     </string-array>
+
+    <string name="today">Today</string>
+    <string name="tommorow">Tommorow</string>
+
+    <string name="format_full_friendly_date">
+        <xliff:g id="month" >%1$s</xliff:g><xliff:g id="day" >%1$s</xliff:g>
+    </string>
+
+     <string name="format_temperature">
+        <xliff:g id="temp" >%1.0f</xliff:g>\u00B0</string>
+
 </resources>

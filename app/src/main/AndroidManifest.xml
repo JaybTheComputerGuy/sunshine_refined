@@ -27,7 +27,7 @@
                 android:value="com.example.jayb.sunshine3.MainActivity" />
         </activity>
         <activity
-            android:name="com.example.jayb.sunshine3.SettingsActivity"
+            android:name=".SettingsActivity"
             android:label="@string/title_activity_settings"
             android:parentActivityName=".MainActivity" >
             <meta-data
@@ -36,8 +36,9 @@
         </activity>
         cd
         <provider
-            android:authorities="com.example.jayb.sunshine3"
-            android:name=".data.WeatherProvider" />
+            android:name=".data.WeatherProvider"
+            android:authorities="com.example.jayb.sunshine3" />
+
     </application>
 
 </manifest>

@@ -48,7 +48,7 @@ import java.util.List;
  * A placeholder fragment containing a simple view.
  */
 public class MainActivityFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor>{
-    private SimpleCursorAdapter mforeCastAdapter;
+    private ForecastAdapter mforeCastAdapter;
     private String mLocation;
     private static final int FORECAST_LOADER = 0;
 
@@ -106,7 +106,7 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     private void updateWeather(){
         FetchWeatherTask weatherTask = new FetchWeatherTask(getActivity());
 
-        String location = Utility.getPrefferedLocation(getActivity());
+        String location = Utility.getPreferredLocation(getActivity());
         weatherTask.execute(location);
     }
 
@@ -116,7 +116,7 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
 
     public void onResume(){
         super.onResume();
-        if(mLocation != null && !Utility.getPrefferedLocation(this).equals(mLocation)){
+        if(mLocation != null && !Utility.getPreferredLocation(getActivity()).equals(mLocation)){
             getLoaderManager().restartLoader(FORECAST_LOADER, null, this);
         }
     }
@@ -124,12 +124,24 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
-
+        ListView listView = (ListView) rootView.findViewById(R.id.listview_forecast);
 
 
         //List<String> weekForecast = new ArrayList<String>(Arrays.asList(forecast_array));
 
-        mforeCastAdapter = new SimpleCursorAdapter(getActivity(),
+        mforeCastAdapter = new ForecastAdapter(getActivity(),null,0);
+        listView.setAdapter(mforeCastAdapter);
+        listView.setOnItemClickListener(onItemClick(parent,view,position,id) -> {
+            Intent detailIntent = new Intent(getActivity(),DetailActivity.class);
+            ForecastAdapter adapter = (ForecastAdapter)parent.getAdapter();
+            Cursor cursor = adapter.getCursor();
+
+            if(null != cursor && cursor.moveToPosition(position)){
+                detailIntent.putExtra(DetailActivity.DATE_KEY,cursor.getString(COL_WEATHER_DATE));
+                startActivity(detailIntent);
+            }
+        });
+
                 R.layout.list_item_forecast,dateText,
                 null,
                 new String[]{WeatherContract.WeatherEntries.COLUMN_DATEtEXT,
@@ -198,7 +210,7 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
         String startDate = WeatherContract.getDBdateString(new Date());
 
         String sortOrder = WeatherContract.WeatherEntries.COLUMN_DATEtEXT + "ASC";
-        mLocation = Utility.getPrefferedLocation(getActivity());
+        mLocation = Utility.getPreferredLocation(getActivity());
         Uri weatherForLocationUri = WeatherContract.WeatherEntries.buildWeatherLocationWithDate(mLocation,startDate);
 
         Log.d("Fragement", "URI" + weatherForLocationUri.toString());
