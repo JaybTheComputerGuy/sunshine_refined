@@ -10,6 +10,8 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.example.jayb.sunshine3.sync.SunshineSyncAdapter;
+
 
 public class MainActivity extends ActionBarActivity implements MainActivityFragment.CallBack {
     boolean mTwopane;
@@ -18,24 +20,25 @@ public class MainActivity extends ActionBarActivity implements MainActivityFragm
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if(findViewById(R.id.weather_detail_container) != null){
-            mTwopane = true;
-
-            if(savedInstanceState == null){
-                getFragmentManager().beginTransaction().
-                        replace(R.id.weather_detail_container, new DetailActivityFragment()).commit();
-            }
-
-        }
-        else{
-            mTwopane = false;
-        }
-
         MainActivityFragment fragment = ((MainActivityFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.fragment_forecast));
         fragment.setUseTodayLayout(mTwopane);
 
+        if(findViewById(R.id.weather_detail_container) != null){
+            mTwopane = true;
+            fragment.setUseTodayLayout(false);
 
+
+
+            Bundle args = new Bundle();
+            DetailActivityFragment fragment2 = new DetailActivityFragment();
+            fragment2.setArguments(args);
+
+            getSupportFragmentManager().beginTransaction().replace(R.id.weather_detail_container,fragment2).commit();
+
+        }
+
+        SunshineSyncAdapter.initializeSyncAdapter(this);
     }
 
 
@@ -97,4 +100,6 @@ public class MainActivity extends ActionBarActivity implements MainActivityFragm
 
         }
     }
+
+
 }

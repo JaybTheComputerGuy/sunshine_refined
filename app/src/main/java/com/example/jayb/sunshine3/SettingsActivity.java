@@ -9,6 +9,9 @@ import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
 
+import com.example.jayb.sunshine3.data.WeatherContract;
+import com.example.jayb.sunshine3.sync.SunshineSyncAdapter;
+
 /**
  * Created by jayb on 5/17/15.
  */
@@ -34,10 +37,12 @@ public class SettingsActivity extends PreferenceActivity implements Preference.O
 
         if(!mBindingPreference){
             if(preference.getKey().equals(getString(R.string.pref_location_key))){
-                FetchWeatherTask weatherTask = new FetchWeatherTask(this);
-                String location = value.toString();
-                weatherTask.execute(location);
+                SunshineSyncAdapter.syncImmediately(this);
             }
+            else{
+                //getContentResolver().notifyChange(WeatherContract.C );
+            }
+
         }
 
         if(preference instanceof ListPreference){

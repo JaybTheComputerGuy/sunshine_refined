@@ -1,5 +1,8 @@
 package com.example.jayb.sunshine3;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
@@ -26,6 +29,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.jayb.sunshine3.data.WeatherContract;
+import com.example.jayb.sunshine3.service.SunshineService;
+import com.example.jayb.sunshine3.sync.SunshineSyncAdapter;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -126,13 +131,9 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     }
 
     private void updateWeather(){
-        FetchWeatherTask weatherTask = new FetchWeatherTask(getActivity());
-
-        String location = Utility.getPreferredLocation(getActivity());
-        weatherTask.execute(location);
+        SunshineSyncAdapter.syncImmediately(getActivity());
     }
 
-    public
 
     public void onStart(){
         super.onStart();
