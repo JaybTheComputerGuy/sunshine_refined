@@ -11,8 +11,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 
 
-public class MainActivity extends ActionBarActivity {
-    boolean mTwopane
+public class MainActivity extends ActionBarActivity implements MainActivityFragment.CallBack {
+    boolean mTwopane;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -30,6 +30,10 @@ public class MainActivity extends ActionBarActivity {
         else{
             mTwopane = false;
         }
+
+        MainActivityFragment fragment = ((MainActivityFragment) getSupportFragmentManager()
+                .findFragmentById(R.id.fragment_forecast));
+        fragment.setUseTodayLayout(mTwopane);
 
 
     }
@@ -76,4 +80,21 @@ public class MainActivity extends ActionBarActivity {
     }
 
 
+    @Override
+    public void onItemSelected(String date) {
+        if(mTwopane){
+            Bundle args = new Bundle();
+            args.putString(DetailActivityFragment.DATE_KEY,date);
+
+            DetailActivityFragment fragment = new DetailActivityFragment();
+            fragment.setArguments(args);
+
+            getSupportFragmentManager().beginTransaction().replace(R.id.weather_detail_container,fragment).commit();
+        }
+        else{
+            Intent intent = new Intent(this,DetailActivity.class).putExtra(DetailActivityFragment.DATE_KEY,date);
+            startActivity(intent);
+
+        }
+    }
 }

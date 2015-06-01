@@ -51,6 +51,7 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     private ForecastAdapter mforeCastAdapter;
     private String mLocation;
     private static final int FORECAST_LOADER = 0;
+    private int mPosition;
 
 
     public static final String[] FORECAST_COLUMNS = {
@@ -68,8 +69,13 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     public static final int COL_WEATHER_MAX_TEMP = 3;
     public static final int COL_WEATHER_MIN_TEMP = 4;
     public static final int COL_LOCATION_SETTING = 5;
+    private boolean mUseTodayLayout;
 
 
+
+    public interface CallBack{
+        public void onItemSelected(String date);
+    }
     public MainActivityFragment() {
     }
 
@@ -77,6 +83,22 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     public void  onActivityCreated(Bundle savedInstanceState){
             super.onActivityCreated(savedInstanceState);
             getLoaderManager().initLoader(FORECAST_LOADER,null,this);
+    }
+    public void setUseTodayLayout(boolean useTodayLayout) {
+        mUseTodayLayout = useTodayLayout;
+
+        if(null != mforeCastAdapter){
+            mforeCastAdapter.setUseTodayLayout(mUseTodayLayout);
+        }
+    }
+
+    @Override
+    public void onSaveInstanceBundle(Bundle outState){
+        if(mPosition != ListView.INVALID_POSITION){
+            outState.putInt(SELECTED_KEY, mPosition);
+        }
+        super.onSaveInstanceState(outState);
+
     }
 
     public void onCreate(Bundle savedInstanceState){
@@ -110,6 +132,8 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
         weatherTask.execute(location);
     }
 
+    public
+
     public void onStart(){
         super.onStart();
     }
@@ -123,6 +147,9 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
+
+        mforeCastAdapter = new ForecastAdapter(getActivity(),null,0);
+        mforeCastAdapter.setUseTodayLayout(mUseTodayLayout);
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
         ListView listView = (ListView) rootView.findViewById(R.id.listview_forecast);
 
@@ -131,32 +158,18 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
 
         mforeCastAdapter = new ForecastAdapter(getActivity(),null,0);
         listView.setAdapter(mforeCastAdapter);
-        listView.setOnItemClickListener(onItemClick(parent,view,position,id) -> {
-            Intent detailIntent = new Intent(getActivity(),DetailActivity.class);
-            ForecastAdapter adapter = (ForecastAdapter)parent.getAdapter();
-            Cursor cursor = adapter.getCursor();
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                Cursor cursor = mforeCastAdapter.getCursor();
 
-            if(null != cursor && cursor.moveToPosition(position)){
-                detailIntent.putExtra(DetailActivity.DATE_KEY,cursor.getString(COL_WEATHER_DATE));
-                startActivity(detailIntent);
+                if(null != cursor && cursor.moveToPosition(position)){
+                    ((CallBack) getActivity()).onItemSelected(cursor.getString(COL_WEATHER_DATE));
+                }
+                mPosition = position;
             }
         });
 
-                R.layout.list_item_forecast,dateText,
-                null,
-                new String[]{WeatherContract.WeatherEntries.COLUMN_DATEtEXT,
-                WeatherContract.WeatherEntries.COLUMN_SHORT_DESC,
-                WeatherContract.WeatherEntries.COLUMN_MAX_TEMP,
-                        WeatherContract.WeatherEntries.COLUMN_MIN_TEMP
-                },
-                new int[]{
-                        R.id.list_item_date_textview,
-                        R.id.list_item_forecast_textview,
-                        R.id.list_item_high_textview,
-                        R.id.list_item_forecast
-                },
-                0
-        );
 
         mforeCastAdapter.setViewBinder(new SimpleCursorAdapter.ViewBinder(){
             @Override
@@ -199,6 +212,9 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
             }
         });
 
+        if(savedInstanceState != null && savedInstanceState.containsKey(SELECTED_KEY) ){
+            mPosition = savedInstanceState.getInt(SELECTED_KEY);
+        }
 
 
 
@@ -229,6 +245,10 @@ public class MainActivityFragment extends Fragment implements LoaderManager.Load
     @Override
     public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
         mforeCastAdapter.swapCursor(data);
+
+        if(mPosition  != ListView.INVALID_POSITION){
+            mListView.setSelection(mPosition);
+        }
     }
 
     @Override

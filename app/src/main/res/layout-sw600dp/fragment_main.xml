@@ -13,8 +13,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:id="@+id/listview_forecast"
-        style="@style/ForecastListStyle"
-
+        android:choiceMode="singleChoice"
         />
 
 </FrameLayout>

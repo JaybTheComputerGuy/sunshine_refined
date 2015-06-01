@@ -53,19 +53,22 @@ public class DetailActivityFragment extends Fragment implements LoaderManager.Lo
     public void onActivityCreated(Bundle savedInstanceState){
         super.onActivityCreated(savedInstanceState);
         if(null != savedInstanceState) {
-            getLoaderManager().initLoader(DETAIL_LOADER, null, this);
+            mLocation = savedInstanceState.getString(LOCATION_KEY);
+        }
+
+        Bundle arguments = getArguments();
+
+        if(arguments != null && arguments.containsKey(DetailActivityFragment.DATE_KEY)){
+                getLoaderManager().initLoader(DETAIL_LOADER,null,this);
         }
     }
 
     public void onResume(){
         super.onResume();
-        Intent intent = getActivity().getIntent();
+        Bundle arguments = getArguments();
 
-        if(intent != null && intent.hasExtra(DetailActivityFragment.DATE_KEY) &&
+        if(arguments != null && arguments.containsKey(DetailActivityFragment.DATE_KEY) &&
                 null != mLocation && mLocation.equals(Utility.getPreferredLocation(getActivity()))){
-
-        }
-        if(null != mLocation && mLocation.equals(Utility.getPreferredLocation(getActivity()))){
             getLoaderManager().restartLoader(DETAIL_LOADER, null, this);
         }
     }
@@ -138,8 +141,10 @@ public class DetailActivityFragment extends Fragment implements LoaderManager.Lo
                 WeatherContract.LocationEntry.COLUMN_LOCATION_SETTING
         };
 
+        String dateStr = getArguments().getString(DetailActivityFragment.DATE_KEY);
+
         mLocation = Utility.getPreferredLocation(getActivity());
-        Uri weatherUri = WeatherContract.WeatherEntries.buildWeatherLocationWithDate(mLocation,);
+        Uri weatherUri = WeatherContract.WeatherEntries.buildWeatherLocationWithDate(mLocation,dateStr );
         return new CursorLoader(
                 getActivity(),
                 weatherUri,
@@ -148,6 +153,9 @@ public class DetailActivityFragment extends Fragment implements LoaderManager.Lo
                 null,
                 null
         );
+
+
+
     }
 
     @Override
