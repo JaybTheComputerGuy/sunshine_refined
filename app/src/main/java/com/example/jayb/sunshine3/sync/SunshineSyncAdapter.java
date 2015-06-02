@@ -1,9 +1,9 @@
 package com.example.jayb.sunshine3.sync;
-
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.AbstractThreadedSyncAdapter;
-import android.content.BroadcastReceiver;
 import android.content.ContentProviderClient;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -17,13 +17,16 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.RemoteException;
 import android.preference.PreferenceManager;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.TaskStackBuilder;
 import android.util.Log;
 
+import com.example.jayb.sunshine3.MainActivity;
 import com.example.jayb.sunshine3.R;
 import com.example.jayb.sunshine3.Utility;
 import com.example.jayb.sunshine3.data.WeatherContract;
-import com.example.jayb.sunshine3.service.SunshineService;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -35,71 +38,92 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Vector;
+import java.util.concurrent.TimeUnit;
 
-/**
- * Created by jayb on 6/1/15.
- */
 public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
-    public final String LOG_TAG = SunshineSyncAdapter.class.getSimpleName();
-    static public final String LOCATION_QUERY_EXTRA = "lqe";
-    public static final int SYNC_INTERVAL = 60 * 80;
-    public static final int SYNC_FLEXTIME = SYNC_INTERVAL/3;
 
-    public SunshineSyncAdapter(Context context,boolean autoInitialize){
+    private static final String LOG_TAG = SunshineSyncAdapter.class.getSimpleName();
+    public static final int SYNC_INTERVAL = 60 * 180;
+    public static final int SYNC_FLEXTIME = SYNC_INTERVAL / 3;
+
+    private Context mContext;
+
+    public SunshineSyncAdapter(Context context, boolean autoInitialize) {
         super(context, autoInitialize);
+
+        mContext = context;
     }
 
-    public static void syncImmediately(Context context){
+    private static final String[] NOTIFY_WEATHER_PROJECTION = new String[] {
+            WeatherContract.WeatherEntries.COLUMN_WEATHER_ID,
+            WeatherContract.WeatherEntries.COLUMN_MAX_TEMP,
+            WeatherContract.WeatherEntries.COLUMN_MIN_TEMP,
+            WeatherContract.WeatherEntries.COLUMN_SHORT_DESC
+    };
+
+    // these indices must match the projection
+    private static int INDEX_WEATHER_ID = 0;
+    private static int INDEX_MAX_TEMP   = 1;
+    private static int INDEX_MIN_TEMP   = 2;
+    private static int INDEX_SHORT_DESC = 3;
+
+    private static final int WEATHER_NOTIFICATION_ID = 3004;
+
+    public static void syncImmediately(Context context) {
         Bundle bundle = new Bundle();
-        bundle.putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED,true);
-        bundle.putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL,true);
-        ContentResolver.requestSync(getSyncAccount(context), context.getString(R.string.content_authority), bundle);
-
+        bundle.putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true);
+        bundle.putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true);
+        ContentResolver.requestSync(getSyncAccount(context),
+                context.getString(R.string.content_authority), bundle);
     }
 
-    public static void configurePeriodSync(Context context,int syncInterval,int flexTime){
+    public static void configurePeriodicSync(Context context, int syncInterval, int flexTime) {
+
         Account account = getSyncAccount(context);
         String authority = context.getString(R.string.content_authority);
 
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT){
-            SyncRequest request = new SyncRequest.Builder().syncPeriodic(syncInterval,flexTime).setSyncAdapter(account,authority).build();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            // we can enable inexact timers in our periodic sync
+            SyncRequest request = new SyncRequest.Builder().
+                    syncPeriodic(syncInterval, flexTime).
+                    setSyncAdapter(account, authority).build();
             ContentResolver.requestSync(request);
+        }
 
-        }
-        else {
-            ContentResolver.addPeriodicSync(account, authority, new Bundle(), syncInterval);
-        }
+        ContentResolver.addPeriodicSync(account, authority, new Bundle(), syncInterval);
     }
 
-    public static Account getSyncAccount(Context context){
-        AccountManager accountManager = (AccountManager)context.getSystemService(Context.ACCOUNT_SERVICE);
-        Account account = new Account(context.getString(R.string.app_name),context.getString(R.string.sync_account_type));
+    public static Account getSyncAccount(Context context) {
 
-        if(null == accountManager.getPassword(account)){
+        AccountManager accountManager = AccountManager.get(context);
 
-            if(!accountManager.addAccountExplicitly(account,null,null)){
+        Account newAccount = new Account(
+                context.getString(R.string.app_name), context.getString(R.string.sync_account_type)
+        );
+
+        if (null == accountManager.getPassword(newAccount)) {
+            if (!accountManager.addAccountExplicitly(newAccount, "", null)) {
                 return null;
             }
-            onAccountCreated(account,context);
+
+            onAccountCreated(newAccount, context);
+
         }
 
-        return account;
-
+        return newAccount;
     }
 
     @Override
     public void onPerformSync(Account account, Bundle extras, String authority, ContentProviderClient provider, SyncResult syncResult) {
+
         String locationQuery = Utility.getPreferredLocation(getContext());
 
-
-        // If there's no zip code, there's nothing to look up.  Verify size of params.
-        if (params.length == 0) {
-            return;
-        }
-
+        deleteOldData(provider, locationQuery);
 
         // These two need to be declared outside the try/catch
         // so that they can be closed in the finally block.
@@ -125,7 +149,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
             final String DAYS_PARAM = "cnt";
 
             Uri builtUri = Uri.parse(FORECAST_BASE_URL).buildUpon()
-                    .appendQueryParameter(QUERY_PARAM, params[0])
+                    .appendQueryParameter(QUERY_PARAM, locationQuery)
                     .appendQueryParameter(FORMAT_PARAM, format)
                     .appendQueryParameter(UNITS_PARAM, units)
                     .appendQueryParameter(DAYS_PARAM, Integer.toString(numDays))
@@ -178,24 +202,15 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
             }
         }
 
-        // This will only happen if there was an error getting or parsing the forecast.
-        return;
-    }
-
-    private String[] getWeatherDataFromJson(String forecastJsonStr, int numDays,
-                                            String locationSetting)
-            throws JSONException {
-
-        // These are the names of the JSON objects that need to be extracted.
-
-        // Location information
         final String OWM_CITY = "city";
         final String OWM_CITY_NAME = "name";
         final String OWM_COORD = "coord";
-        final String OWM_COORD_LAT = "lat";
-        final String OWM_COORD_LONG = "lon";
 
-        // Weather information.  Each day's forecast info is an element of the "list" array.
+        // Location coordinate
+        final String OWM_LATITUDE = "lat";
+        final String OWM_LONGITUDE = "lon";
+
+        // Weather information. Each day's forecast info is an element of the "list" array.
         final String OWM_LIST = "list";
 
         final String OWM_DATETIME = "dt";
@@ -204,7 +219,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
         final String OWM_WINDSPEED = "speed";
         final String OWM_WIND_DIRECTION = "deg";
 
-        // All temperatures are children of the "temp" object.
+        // All temperatures are children of the "temp" object
         final String OWM_TEMPERATURE = "temp";
         final String OWM_MAX = "max";
         final String OWM_MIN = "min";
@@ -213,170 +228,250 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
         final String OWM_DESCRIPTION = "main";
         final String OWM_WEATHER_ID = "id";
 
-        JSONObject forecastJson = new JSONObject(forecastJsonStr);
-        JSONArray weatherArray = forecastJson.getJSONArray(OWM_LIST);
+        try {
+            JSONObject forecastJson = new JSONObject(forecastJsonStr);
+            JSONArray weatherArray = forecastJson.getJSONArray(OWM_LIST);
 
-        JSONObject cityJson = forecastJson.getJSONObject(OWM_CITY);
-        String cityName = cityJson.getString(OWM_CITY_NAME);
-        JSONObject coordJSON = cityJson.getJSONObject(OWM_COORD);
-        double cityLatitude = coordJSON.getLong(OWM_COORD_LAT);
-        double cityLongitude = coordJSON.getLong(OWM_COORD_LONG);
+            JSONObject cityJson = forecastJson.getJSONObject(OWM_CITY);
+            String cityName = cityJson.getString(OWM_CITY_NAME);
 
-        Log.v(LOG_TAG, cityName + ", with coord: " + cityLatitude + " " + cityLongitude);
+            JSONObject cityCoord = cityJson.getJSONObject(OWM_COORD);
+            double cityLatitude = cityCoord.getDouble(OWM_LATITUDE);
+            double cityLongitude = cityCoord.getDouble(OWM_LONGITUDE);
 
-        // Insert the location into the database.
-        // The function referenced here is not yet implemented, so we've commented it out for now.
-        long locationID = insertLocationInDatabase(
-                locationSetting, cityName, cityLatitude, cityLongitude);
+            Log.v(LOG_TAG, "inserting " + cityName + ", with coord: " + cityLatitude + ", " + cityLongitude);
 
-        String[] resultStrs = new String[numDays];
-        // Get and insert the new weather information into the database
-        Vector<ContentValues> cVVector = new Vector<ContentValues>(weatherArray.length());
+            final long locationID = addLocation(provider, locationQuery, cityName, cityLatitude, cityLongitude);
 
-        for(int i = 0; i < weatherArray.length(); i++) {
-            // These are the values that will be collected.
+            // Get and insert the new weather information into the database
+            Vector<ContentValues> cVVector = new Vector<ContentValues>(weatherArray.length());
 
-            long dateTime;
-            double pressure;
-            int humidity;
-            double windSpeed;
-            double windDirection;
+            for(int i = 0; i < weatherArray.length(); i++) {
+                // These are the values that will be collected.
 
-            double high;
-            double low;
+                long dateTime;
+                double pressure;
+                int humidity;
+                double windSpeed;
+                double windDirection;
 
-            String description;
-            int weatherId;
+                double high;
+                double low;
 
-            // Get the JSON object representing the day
-            JSONObject dayForecast = weatherArray.getJSONObject(i);
+                String description;
+                int weatherId;
 
-            // The date/time is returned as a long.  We need to convert that
-            // into something human-readable, since most people won't read "1400356800" as
-            // "this saturday".
-            dateTime = dayForecast.getLong(OWM_DATETIME);
+                // Get the JSON object representing the day
+                JSONObject dayForecast = weatherArray.getJSONObject(i);
 
-            pressure = dayForecast.getDouble(OWM_PRESSURE);
-            humidity = dayForecast.getInt(OWM_HUMIDITY);
-            windSpeed = dayForecast.getDouble(OWM_WINDSPEED);
-            windDirection = dayForecast.getDouble(OWM_WIND_DIRECTION);
+                // The date/time is returned as a long.  We need to convert that
+                // into something human-readable, since most people won't read "1400356800" as
+                // "this saturday".
+                dateTime = dayForecast.getLong(OWM_DATETIME);
 
-            // Description is in a child array called "weather", which is 1 element long.
-            // That element also contains a weather code.
-            JSONObject weatherObject =
-                    dayForecast.getJSONArray(OWM_WEATHER).getJSONObject(0);
-            description = weatherObject.getString(OWM_DESCRIPTION);
-            weatherId = weatherObject.getInt(OWM_WEATHER_ID);
+                pressure = dayForecast.getDouble(OWM_PRESSURE);
+                humidity = dayForecast.getInt(OWM_HUMIDITY);
+                windSpeed = dayForecast.getDouble(OWM_WINDSPEED);
+                windDirection = dayForecast.getDouble(OWM_WIND_DIRECTION);
 
-            // Temperatures are in a child object called "temp".  Try not to name variables
-            // "temp" when working with temperature.  It confuses everybody.
-            JSONObject temperatureObject = dayForecast.getJSONObject(OWM_TEMPERATURE);
-            high = temperatureObject.getDouble(OWM_MAX);
-            low = temperatureObject.getDouble(OWM_MIN);
+                // Description is in a child array called "weather", which is 1 element long.
+                // That element also contains a weather code.
+                JSONObject weatherObject =
+                        dayForecast.getJSONArray(OWM_WEATHER).getJSONObject(0);
+                description = weatherObject.getString(OWM_DESCRIPTION);
+                weatherId = weatherObject.getInt(OWM_WEATHER_ID);
 
-            ContentValues weatherValues = new ContentValues();
+                // Temperatures are in a child object called "temp".  Try not to name variables
+                // "temp" when working with temperature.  It confuses everybody.
+                JSONObject temperatureObject = dayForecast.getJSONObject(OWM_TEMPERATURE);
+                high = temperatureObject.getDouble(OWM_MAX);
+                low = temperatureObject.getDouble(OWM_MIN);
 
-            weatherValues.put(WeatherContract.WeatherEntries.COL_LOC_KEY, locationID);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_DATEtEXT,
-                    WeatherContract.getDBdateString(new Date(dateTime * 1000L)));
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_HUMIDITY, humidity);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_PRESSURE, pressure);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_WIND_SPEED, windSpeed);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_DEGREES, windDirection);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_MAX_TEMP, high);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_MIN_TEMP, low);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_SHORT_DESC, description);
-            weatherValues.put(WeatherContract.WeatherEntries.COLUMN_WEATHER_ID, weatherId);
+                ContentValues weatherValues = new ContentValues();
 
-            cVVector.add(weatherValues);
+                weatherValues.put(WeatherContract.WeatherEntries.COL_LOC_KEY, locationID);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_DATEtEXT,
+                        WeatherContract.getDBdateString(new Date(dateTime * 1000L)));
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_HUMIDITY, humidity);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_PRESSURE, pressure);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_WIND_SPEED, windSpeed);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_DEGREES, windDirection);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_MAX_TEMP, high);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_MIN_TEMP, low);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_SHORT_DESC, description);
+                weatherValues.put(WeatherContract.WeatherEntries.COLUMN_WEATHER_ID, weatherId);
 
-            if (cVVector.size() > 0) {
-                ContentValues[] cvArray = new ContentValues[cVVector.size()];
-                cVVector.toArray(cvArray);
-                int rowsInserted = getContext().getContentResolver()
-                        .bulkInsert(WeatherContract.WeatherEntries.CONTENT_URI, cvArray);
-                Log.v(LOG_TAG, "inserted " + rowsInserted + " rows of weather data");
+                cVVector.add(weatherValues);
+
+                if (i == 0) {
+                    notifyWeather(high, low, description, weatherId);
+                }
             }
 
-            String highAndLow = formatHighLows(high, low);
-            String day = getReadableDateString(dateTime);
-            resultStrs[i] = day + " - " + description + " - " + highAndLow;
+            if (cVVector.size() > 0) {
+                ContentValues[] contentValuesArray = new ContentValues[cVVector.size()];
+                cVVector.toArray(contentValuesArray);
+
+                // insert the vector of values into the database
+
+                final int inserted = provider.bulkInsert(WeatherContract.WeatherEntries.CONTENT_URI, contentValuesArray);
+
+                Log.v(LOG_TAG, "Inserted " + inserted + " values into the db");
+
+                Calendar cal = Calendar.getInstance();
+                cal.add(Calendar.DATE, -1);
+                String yesterdayDate = WeatherContract.getDBdateString(cal.getTime());
+//
+//                Cursor c = provider.query(WeatherContract.WeatherEntry.CONTENT_URI,
+//                        null,
+//                        WeatherContract.WeatherEntry.COLUMN_DATETEXT + " <= ?",
+//                        new String[] { yesterdayDate },
+//                        null);
+//
+//                if (c.moveToFirst()) {
+//                    String values = "";
+//                    for (String key: c.getColumnNames()) {
+//                        values += String.format("[%s: %s] ", key, c.getString(c.getColumnIndex(key)));
+//                    }
+//
+//                    Log.v(LOG_TAG, "Item to delete = " + values);
+//                }
+
+                final int deleted = getContext().getContentResolver().delete(WeatherContract.WeatherEntries.CONTENT_URI,
+                        WeatherContract.WeatherEntries.COLUMN_DATEtEXT + " <= ?",
+                        new String[]{yesterdayDate});
+
+                Log.v(LOG_TAG, "Deleted " + deleted + " old values from the db");
+            }
+
+        } catch (JSONException e) {
+            Log.e(LOG_TAG, e.getLocalizedMessage(), e);
+            e.printStackTrace();
+        } catch (RemoteException e) {
+            Log.e(LOG_TAG, e.getLocalizedMessage(), e);
+            e.printStackTrace();
+            syncResult.databaseError = true;
         }
-        return resultStrs;
     }
 
-    private String formatHighLows(double high, double low) {
-        // Data is fetched in Celsius by default.
-        // If user prefers to see in Fahrenheit, convert the values here.
-        // We do this rather than fetching in Fahrenheit so that the user can
-        // change this option without us having to re-fetch the data once
-        // we start storing the values in a database.
-        SharedPreferences sharedPrefs =
-                PreferenceManager.getDefaultSharedPreferences();
-        String unitType = sharedPrefs.getString(
-                getContext().getString(R.string.pref_units_key),
-                getContext().getString(R.string.pref_units_metric));
+    private void deleteOldData(ContentProviderClient provider, String locationQuery) {
 
-        if (unitType.equals(getContext().getString(R.string.pref_units_imperial))) {
-            high = (high * 1.8) + 32;
-            low = (low * 1.8) + 32;
-        } else if (!unitType.equals(getContext().getString(R.string.pref_units_metric))) {
-            Log.d(LOG_TAG, "Unit type not found: " + unitType);
-        }
-
-        // For presentation, assume the user doesn't care about tenths of a degree.
-        long roundedHigh = Math.round(high);
-        long roundedLow = Math.round(low);
-
-        String highLowStr = roundedHigh + "/" + roundedLow;
-        return highLowStr;
     }
 
-    private String getReadableDateString(long time){
-        // Because the API returns a unix timestamp (measured in seconds),
-        // it must be converted to milliseconds in order to be converted to valid date.
-        Date date = new Date(time * 1000);
-        SimpleDateFormat format = new SimpleDateFormat("E, MMM d");
-        return format.format(date).toString();
-    }
+    private long addLocation(ContentProviderClient provider,
+                             String locationQuery,
+                             String cityName,
+                             double cityLatitude,
+                             double cityLongitude) throws RemoteException {
 
-    private long insertLocationInDatabase(String locationSetting, String cityName, double lat, double lon) {
-        Cursor cursor = getContext().getContentResolver().query(
+        Cursor cursor = provider.query(
                 WeatherContract.LocationEntry.CONTENT_URI,
                 new String[]{WeatherContract.LocationEntry._ID},
                 WeatherContract.LocationEntry.COLUMN_LOCATION_SETTING + " = ?",
-                new String[]{locationSetting},
-                null);
+                new String[]{locationQuery},
+                null
+        );
 
+
+        final long locationID;
         if (cursor.moveToFirst()) {
-            Log.v(LOG_TAG, "Found it!");
-            int locationIdIndex = cursor.getColumnIndex(WeatherContract.LocationEntry._ID);
-            return cursor.getLong(locationIdIndex);
+            Log.v(LOG_TAG, "found it in the database!");
+            int columnId = cursor.getColumnIndex(WeatherContract.LocationEntry._ID);
+            locationID = cursor.getLong(columnId);
         } else {
-            Log.v(LOG_TAG, "Didn't find it in the database, inserting now!");
-            ContentValues locationValues = new ContentValues();
-            locationValues.put(WeatherContract.LocationEntry.COLUMN_LOCATION_SETTING, locationSetting);
-            locationValues.put(WeatherContract.LocationEntry.COLUMN_CITY_NAME, cityName);
-            locationValues.put(WeatherContract.LocationEntry.COLUMN_COORD_LAT, lat);
-            locationValues.put(WeatherContract.LocationEntry.COLUMN_COORD_LONG, lon);
+            // The location does not yet exist, so add it
+            ContentValues values = new ContentValues();
+            values.put(WeatherContract.LocationEntry.COLUMN_LOCATION_SETTING, locationQuery);
+            values.put(WeatherContract.LocationEntry.COLUMN_CITY_NAME, cityName);
+            values.put(WeatherContract.LocationEntry.COLUMN_COORD_LAT, cityLatitude);
+            values.put(WeatherContract.LocationEntry.COLUMN_COORD_LONG, cityLongitude);
 
-            Uri locationInsertUri = getContext().getContentResolver()
-                    .insert(WeatherContract.LocationEntry.CONTENT_URI, locationValues);
+            Uri uri = provider.insert(WeatherContract.LocationEntry.CONTENT_URI, values);
 
-            return ContentUris.parseId(locationInsertUri);
+            locationID = ContentUris.parseId(uri);
+        }
+
+        return locationID;
+    }
+
+    private void notifyWeather(double high, double low, String description, int weatherId) {
+        //checking the last update and notify if it' the first of the day
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(mContext);
+        String disableDisplayNotificationsKey = mContext.getString(R.string.pref_enable_notifications_key);
+
+        // If notifications are enabled in preferences...
+        boolean defaultForNotifications =
+                Boolean.parseBoolean(mContext.getString(R.string.pref_enable_notifications_default));
+        boolean notificationsEnabled =
+                prefs.getBoolean(disableDisplayNotificationsKey, defaultForNotifications);
+
+        // AND it's been at least 24h since the last notification was displayed
+        String lastNotificationKey = mContext.getString(R.string.pref_last_notification);
+        long lastNotification = prefs.getLong(lastNotificationKey, 0);
+
+        boolean shouldNotify = notificationsEnabled &&
+                (System.currentTimeMillis() - lastNotification >= TimeUnit.DAYS.toMillis(1));
+        if (shouldNotify) {
+            // Last sync was more than 1 day ago, let's send a notification with the weather.
+
+            int iconId = Utility.getIconResourceForWeatherCondition(weatherId);
+            String title = mContext.getString(R.string.app_name);
+
+            boolean isMetric = Utility.isMetric(mContext);
+
+            // Define the text of the forecast.
+            String contentText = String.format(mContext.getString(R.string.format_notification),
+                    description,
+                    Utility.formatTemperature(mContext, high, isMetric),
+                    Utility.formatTemperature(mContext, low, isMetric));
+
+            // NotificationCompatBuilder is a very convenient way to build backward-compatible
+            // notifications.  Just throw in some data.
+            NotificationCompat.Builder mBuilder =
+                    new NotificationCompat.Builder(mContext)
+                            .setSmallIcon(iconId)
+                            .setContentTitle(title)
+                            .setContentText(contentText);
+
+            // Make something interesting happen when the user clicks on the notification.
+            // In this case, opening the app is sufficient.
+            Intent resultIntent = new Intent(mContext, MainActivity.class);
+            TaskStackBuilder stackBuilder = TaskStackBuilder.create(mContext);
+            stackBuilder.addParentStack(MainActivity.class);
+            stackBuilder.addNextIntent(resultIntent);
+            PendingIntent resultPendingIntent =
+                    stackBuilder.getPendingIntent(
+                            0,
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                    );
+            mBuilder.setContentIntent(resultPendingIntent);
+            NotificationManager mNotificationManager =
+                    (NotificationManager) getContext()
+                            .getSystemService(Context.NOTIFICATION_SERVICE);
+            // mId allows you to update the notification later on.
+            mNotificationManager.notify(WEATHER_NOTIFICATION_ID, mBuilder.build());
+
+            //refreshing last sync
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putLong(lastNotificationKey, System.currentTimeMillis());
+            editor.apply();
         }
     }
 
-    private static void onAccountCreated(Account account,Context context){
-        SunshineSyncAdapter.configurePeriodSync(context,SYNC_INTERVAL,SYNC_FLEXTIME);
-        ContentResolver.setSyncAutomatically(account,context.getString(R.string.content_authority));
+    private static void onAccountCreated(Account newAccount, Context context) {
+
+        SunshineSyncAdapter.configurePeriodicSync(context, SYNC_INTERVAL, SYNC_FLEXTIME);
+
+        ContentResolver.setSyncAutomatically(newAccount, context.getString(R.string.content_authority), true);
+
         syncImmediately(context);
     }
 
-    public static void initializeSyncAdapter(Context context){
-            getSyncAccount(context);
+    public static void initializeSyncAdapter(Context context) {
+        getSyncAccount(context);
     }
 
-    }
+}
+
 
 

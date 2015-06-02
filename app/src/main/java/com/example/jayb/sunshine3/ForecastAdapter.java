@@ -15,10 +15,7 @@ import android.widget.TextView;
 
 import com.example.jayb.sunshine3.data.WeatherContract;
 
-/**
- * {@link ForecastAdapter} exposes a list of weather forecasts
- * from a {@link Cursor} to a {@link }.
- */
+
 public class ForecastAdapter extends CursorAdapter {
 
     public final String TAG = ForecastAdapter.class.getSimpleName();
@@ -70,9 +67,7 @@ public class ForecastAdapter extends CursorAdapter {
 
     @Override
     public void bindView(View view, Context context, Cursor cursor){
-        // Our viewHolder already contains references to the relevant view, so
-        // set the appropriate values through the viewHolder references instead
-        // of costly findViewById calls
+
         ViewHolder viewHolder = (ViewHolder) view.getTag();
 
         // Read weather icon ID from cursor

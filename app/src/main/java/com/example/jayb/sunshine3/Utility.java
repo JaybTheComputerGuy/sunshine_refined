@@ -1,6 +1,6 @@
 package com.example.jayb.sunshine3;
 
-import android.content.ContentValues;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
@@ -14,6 +14,9 @@ import java.util.Calendar;
 import java.util.Date;
 
 public class Utility {
+
+    private static final String DATE_FORMAT = WeatherContract.DATE_FORMAT;
+
     public static String getPreferredLocation(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         return prefs.getString(context.getString(R.string.pref_location_key),
@@ -27,25 +30,22 @@ public class Utility {
                 .equals(context.getString(R.string.pref_units_metric));
     }
 
-    public static String formatTemperature(Context context, double temperature) {
+    public static String formatTemperature(Context context, double temperature, boolean isMetric) {
+        double temp;
 
-        String suffix = "\u00B0";
-        if (!isMetric(context)) {
-            temperature = (temperature * 1.8) + 32;
+        if (isMetric) {
+            temp = temperature;
+        } else {
+            temp = 9 * temperature / 5 + 32;
         }
 
-        // For presentation, assume the user doesn't care about tenths of a degree.
-        return String.format(context.getString(R.string.format_temperature), temperature);
+        return context.getString(R.string.format_temperature, temp);
     }
 
-    static String formatDate(String dateString) {
+    public static String formatDate(String dateString){
         Date date = WeatherContract.getDateFromDb(dateString);
         return DateFormat.getDateInstance().format(date);
     }
-
-    // Format used for storing dates in the database.  ALso used for converting those strings
-    // back into date objects for comparison/processing.
-    public static final String DATE_FORMAT = "yyyyMMdd";
 
     /**
      * Helper method to convert the database representation of the date into something to display
@@ -57,6 +57,11 @@ public class Utility {
      * @return a user-friendly representation of the date.
      */
     public static String getFriendlyDayString(Context context, String dateStr) {
+        // The day string for forecast uses the following logic:
+        // For today: "Today, June 8"
+        // For tomorrow:  "Tomorrow"
+        // For the next 5 days: "Wednesday" (just the day name)
+        // For all days after that: "Mon Jun 8"
 
         Date todayDate = new Date();
         String todayStr = WeatherContract.getDBdateString(todayDate);
@@ -114,7 +119,7 @@ public class Utility {
                 Date tomorrowDate = cal.getTime();
                 if (WeatherContract.getDBdateString(tomorrowDate).equals(
                         dateStr)) {
-                    return context.getString(R.string.tommorow);
+                    return context.getString(R.string.tomorrow);
                 } else {
                     // Otherwise, the format is just the day of the week (e.g "Wednesday".
                     SimpleDateFormat dayFormat = new SimpleDateFormat("EEEE");
@@ -150,7 +155,7 @@ public class Utility {
 
     public static String getFormattedWind(Context context, float windSpeed, float degrees) {
         int windFormat;
-        if (Utility.isMetric(context)) {
+        if (SettingsActivity.isMetric(context)) {
             windFormat = R.string.format_wind_kmh;
         } else {
             windFormat = R.string.format_wind_mph;
@@ -190,19 +195,19 @@ public class Utility {
     public static int getIconResourceForWeatherCondition(int weatherId) {
         // Based on weather code data found at:
         // http://bugs.openweathermap.org/projects/api/wiki/Weather_Condition_Codes
-        if (weatherId >= 200 && weatherId <= 232){
+        if (weatherId >= 200 && weatherId <= 232) {
             return R.drawable.ic_storm;
-        } else if (weatherId >= 300 && weatherId <= 321){
+        } else if (weatherId >= 300 && weatherId <= 321) {
             return R.drawable.ic_light_rain;
-        } else if (weatherId >= 500 && weatherId <= 504){
+        } else if (weatherId >= 500 && weatherId <= 504) {
             return R.drawable.ic_rain;
         } else if (weatherId == 511) {
             return R.drawable.ic_snow;
-        } else if (weatherId >= 520 && weatherId <= 531){
+        } else if (weatherId >= 520 && weatherId <= 531) {
             return R.drawable.ic_rain;
-        } else if (weatherId >= 600 && weatherId <= 622){
+        } else if (weatherId >= 600 && weatherId <= 622) {
             return R.drawable.ic_snow;
-        } else if (weatherId >= 701 && weatherId <= 761){
+        } else if (weatherId >= 701 && weatherId <= 761) {
             return R.drawable.ic_fog;
         } else if (weatherId == 761 || weatherId == 781) {
             return R.drawable.ic_storm;
